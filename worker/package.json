@@ -9,15 +9,21 @@
     "deploy": "wrangler deploy",
     "db:generate": "wrangler d1 migrations create gleano-db init",
     "db:migrate:local": "wrangler d1 migrations apply gleano-db --local",
-    "db:migrate:prod": "wrangler d1 migrations apply gleano-db --remote"
+    "db:migrate:prod": "wrangler d1 migrations apply gleano-db --remote",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@gleano/shared": "workspace:*",
     "hono": "^4.6.16"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.0",
     "@cloudflare/workers-types": "^4.20241218.0",
+    "@vitest/coverage-v8": "^3.0.0",
     "typescript": "^5.7.2",
+    "vitest": "^3.0.0",
     "wrangler": "^3.99.0"
   }
 }
