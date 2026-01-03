@@ -135,6 +135,10 @@ function App() {
             <Settings className="mr-2 h-4 w-4" />
             開啟學習面板
           </Button>
+
+          <p className="text-xs text-center text-muted-foreground pt-2">
+            v1.0.1 - API 已連線
+          </p>
         </CardContent>
       </Card>
     </div>

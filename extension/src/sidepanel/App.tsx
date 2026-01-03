@@ -151,6 +151,7 @@ function App() {
           <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <p>播放 YouTube 或 Netflix 影片</p>
           <p className="text-sm">我們會自動捕捉字幕並分析學習內容</p>
+          <p className="text-xs mt-4">v1.0.1 - API 已連線</p>
         </div>
       )}
 

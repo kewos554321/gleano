@@ -17,11 +17,14 @@ const app = new Hono<{ Bindings: Env }>();
 app.use(
   '*',
   cors({
-    origin: [
-      'chrome-extension://*',
-      'moz-extension://*',
-      'http://localhost:*',
-    ],
+    origin: (origin) => {
+      // Allow chrome/firefox extensions and localhost
+      if (!origin) return '*';
+      if (origin.startsWith('chrome-extension://')) return origin;
+      if (origin.startsWith('moz-extension://')) return origin;
+      if (origin.startsWith('http://localhost')) return origin;
+      return null;
+    },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     exposeHeaders: ['Content-Length'],

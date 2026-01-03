@@ -1,7 +1,7 @@
 import type { SubtitleCapturedPayload, UserSettings, AnalysisResult } from '@gleano/shared';
 
 // API configuration
-const API_BASE_URL = 'https://gleano.YOUR_SUBDOMAIN.workers.dev'; // Update this
+const API_BASE_URL = 'https://gleano.gleano-api.workers.dev';
 
 // Subtitle buffer
 let subtitleBuffer: string[] = [];
