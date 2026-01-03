@@ -1,0 +1,23 @@
+{
+  "name": "@gleano/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "db:generate": "wrangler d1 migrations create gleano-db init",
+    "db:migrate:local": "wrangler d1 migrations apply gleano-db --local",
+    "db:migrate:prod": "wrangler d1 migrations apply gleano-db --remote"
+  },
+  "dependencies": {
+    "@gleano/shared": "workspace:*",
+    "hono": "^4.6.16"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.99.0"
+  }
+}
