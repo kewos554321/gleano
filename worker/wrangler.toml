@@ -6,12 +6,12 @@ compatibility_date = "2024-12-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "gleano-db"
-database_id = "YOUR_D1_DATABASE_ID"  # Update after creating with: wrangler d1 create gleano-db
+database_id = "4db25fe2-210f-41a5-b3c9-63d6ab847088"
 
 # KV Namespace for caching
 [[kv_namespaces]]
 binding = "CACHE"
-id = "YOUR_KV_NAMESPACE_ID"  # Update after creating with: wrangler kv namespace create CACHE
+id = "39d77c4a10424539a71883ee1fe5c1b7"
 
 # Environment variables (set via wrangler secret put)
 # GEMINI_API_KEY - Your Google Gemini API key
