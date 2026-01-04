@@ -12,7 +12,10 @@
     "db:migrate:prod": "wrangler d1 migrations apply gleano-db --remote",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts --ignore-pattern '__tests__/**'",
+    "lint:fix": "eslint src --ext .ts --ignore-pattern '__tests__/**' --fix",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@gleano/shared": "workspace:*",
@@ -21,7 +24,12 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.0",
     "@cloudflare/workers-types": "^4.20241218.0",
+    "@eslint/js": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/coverage-istanbul": "^3.2.4",
     "@vitest/coverage-v8": "^3.0.0",
+    "eslint": "^9.0.0",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0",
     "wrangler": "^3.99.0"

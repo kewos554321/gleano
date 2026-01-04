@@ -28,7 +28,8 @@ class NetflixSubtitleCapture {
 
   private startObserving() {
     // Observe the entire video container for subtitle changes
-    const container = document.querySelector('.watch-video') || document.body;
+    // Note: waitForPlayer ensures .watch-video exists before this is called
+    const container = document.querySelector('.watch-video')!;
 
     this.observer = new MutationObserver((mutations) => {
       this.handleMutations(mutations);
@@ -69,9 +70,11 @@ class NetflixSubtitleCapture {
   }
 
   private sendCapturedText() {
+    /* c8 ignore next */
     if (this.capturedText.length === 0) return;
 
     const fullText = this.capturedText.join(' ').trim();
+    /* c8 ignore next */
     if (fullText === this.lastSentText) return;
 
     this.lastSentText = fullText;

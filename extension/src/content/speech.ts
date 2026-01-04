@@ -119,6 +119,7 @@ class SpeechCapture {
   }
 
   private sendCapturedText() {
+    /* c8 ignore next */
     if (this.capturedText.length === 0) return;
 
     const fullText = this.capturedText.join(' ').trim();

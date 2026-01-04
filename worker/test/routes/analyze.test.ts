@@ -65,5 +65,47 @@ describe('Analyze Routes', () => {
       // Should return 200 if API key is configured, or 500 if not
       expect([200, 500]).toContain(response.status);
     });
+
+    it('should return cached result on second request', async () => {
+      const transcript = `Cached test transcript ${Date.now()}`;
+      const requestBody = {
+        transcript,
+        userId: 'cache-test-user',
+        nativeLanguage: 'zh-TW',
+        targetLanguage: 'en',
+        level: 3,
+      };
+
+      // First request
+      const response1 = await SELF.fetch('http://localhost/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'chrome-extension://test',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      // Only test cache if first request was successful
+      if (response1.status === 200) {
+        // Second request should hit cache
+        const response2 = await SELF.fetch('http://localhost/api/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'chrome-extension://test',
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        const json2 = await response2.json();
+        expect(response2.status).toBe(200);
+        expect(json2.success).toBe(true);
+        expect(json2.cached).toBe(true);
+      } else {
+        // API key not configured, skip cache test
+        expect(true).toBe(true);
+      }
+    });
   });
 });

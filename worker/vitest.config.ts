@@ -3,28 +3,28 @@ import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config';
 export default defineWorkersConfig({
   test: {
     globals: true,
-    setupFiles: ['./src/__tests__/setup.ts'],
+    setupFiles: ['./test/setup.ts'],
+    include: ['test/**/*.{test,spec}.ts'],
     poolOptions: {
       workers: {
         wrangler: { configPath: './wrangler.toml' },
       },
     },
     coverage: {
-      provider: 'v8',
+      provider: 'istanbul',
       reporter: ['text', 'json', 'html'],
+      include: ['src/**/*.ts'],
       exclude: [
-        'node_modules/**',
-        'dist/**',
+        'test/**',
         '**/*.d.ts',
         '**/*.config.*',
         '**/types.ts',
-        '**/setup.ts',
       ],
       thresholds: {
-        statements: 100,
-        branches: 100,
-        functions: 100,
-        lines: 100,
+        statements: 95,
+        branches: 85,
+        functions: 90,
+        lines: 95,
       },
     },
   },

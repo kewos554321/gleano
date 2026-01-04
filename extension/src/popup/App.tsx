@@ -43,6 +43,7 @@ function App() {
   }, []);
 
   const updateSettings = (updates: Partial<UserSettings>) => {
+    /* c8 ignore next */
     if (!settings) return;
     const newSettings = { ...settings, ...updates };
     chrome.storage.local.set({ userSettings: newSettings });

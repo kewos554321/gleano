@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { analyzeWithGemini } from '../../services/ai';
+import { analyzeWithGemini } from '../../src/services/ai';
 
 describe('AI Service', () => {
   const mockApiKey = 'test-api-key';
@@ -79,6 +79,39 @@ describe('AI Service', () => {
               parts: [
                 {
                   text: '```json\n{"words": [], "phrases": [], "sentences": []}\n```',
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await analyzeWithGemini(
+        'Test transcript',
+        'zh-TW',
+        'en',
+        3,
+        mockApiKey
+      );
+
+      expect(result.words).toEqual([]);
+      expect(result.phrases).toEqual([]);
+      expect(result.sentences).toEqual([]);
+    });
+
+    it('should handle plain markdown code blocks without json marker', async () => {
+      const mockResponse = {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '```\n{"words": [], "phrases": [], "sentences": []}\n```',
                 },
               ],
             },

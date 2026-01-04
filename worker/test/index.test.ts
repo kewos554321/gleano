@@ -78,5 +78,23 @@ describe('Worker', () => {
 
       expect(response.status).toBe(204);
     });
+
+    it('should reject disallowed origins', async () => {
+      const response = await SELF.fetch('http://localhost/', {
+        headers: {
+          Origin: 'https://evil-site.com',
+        },
+      });
+
+      // CORS should not allow this origin
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    });
+
+    it('should allow requests without origin header', async () => {
+      const response = await SELF.fetch('http://localhost/');
+
+      // No origin header means the request came from same origin or non-browser
+      expect(response.status).toBe(200);
+    });
   });
 });
