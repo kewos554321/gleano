@@ -15,8 +15,8 @@
     "clean": "pnpm -r clean",
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",
-    "deploy": "pnpm --filter @gleano/worker deploy",
-    "deploy:worker": "pnpm --filter @gleano/worker deploy",
+    "deploy": "pnpm --filter @gleano/worker run deploy",
+    "deploy:worker": "pnpm --filter @gleano/worker run deploy",
     "db:migrate:local": "pnpm --filter @gleano/worker db:migrate:local",
     "db:migrate:prod": "pnpm --filter @gleano/worker db:migrate:prod",
     "db:generate": "pnpm --filter @gleano/worker db:generate"
