@@ -6,6 +6,8 @@ export interface UserSettings {
   level: CEFRLevel;
   learningGoal?: LearningGoal;
   customDifficulty?: number; // 1-10
+  debugMode?: boolean;
+  defaultAction?: 'sidepanel' | 'popup'; // What happens when clicking extension icon
 }
 
 export type CEFRLevel = 1 | 2 | 3 | 4 | 5 | 6;

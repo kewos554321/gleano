@@ -1,11 +1,32 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { FilterPanel } from '@/components/FilterPanel';
+import { DebugPanel, type DebugLog } from '@/components/DebugPanel';
+import { SettingsPage } from '@/components/SettingsPage';
 import type { AnalysisResult, Word, Phrase, Sentence, SubtitleCapturedPayload, SubtitleStatusPayload, AnalysisFilter } from '@gleano/shared';
-import { BookOpen, MessageSquare, Quote, Heart, RefreshCw, Settings, AlertCircle, CheckCircle, Search, Loader2 } from 'lucide-react';
+import { BookOpen, MessageSquare, Quote, Heart, RefreshCw, Settings, AlertCircle, CheckCircle, Search, Loader2, Youtube, Tv } from 'lucide-react';
+
+type PageView = 'main' | 'settings';
+type Platform = 'youtube' | 'netflix';
+
+interface PlatformData {
+  result: AnalysisResult | null;
+  loading: boolean;
+  loadingStep: LoadingStep;
+  currentSource: string;
+  subtitleStatus: SubtitleStatusPayload | null;
+}
+
+const emptyPlatformData: PlatformData = {
+  result: null,
+  loading: false,
+  loadingStep: 'idle',
+  currentSource: '',
+  subtitleStatus: null,
+};
 
 function WordCard({ word }: { word: Word }) {
   const [saved, setSaved] = useState(false);
@@ -102,48 +123,134 @@ function SentenceCard({ sentence }: { sentence: Sentence }) {
 type LoadingStep = 'idle' | 'collecting' | 'analyzing' | 'processing';
 
 function App() {
-  const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState<LoadingStep>('idle');
-  const [currentSource, setCurrentSource] = useState<string>('');
+  const [page, setPage] = useState<PageView>('main');
+  const [activePlatform, setActivePlatform] = useState<Platform>('youtube');
+  const [platformData, setPlatformData] = useState<Record<Platform, PlatformData>>({
+    youtube: { ...emptyPlatformData },
+    netflix: { ...emptyPlatformData },
+  });
   const [filter, setFilter] = useState<AnalysisFilter>({});
-  const [subtitleStatus, setSubtitleStatus] = useState<SubtitleStatusPayload | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<DebugLog[]>([]);
+  const currentSourceRef = useRef<Record<Platform, string>>({ youtube: '', netflix: '' });
+
+  // Helper to update platform-specific data
+  const updatePlatformData = useCallback((platform: Platform, updates: Partial<PlatformData>) => {
+    setPlatformData(prev => ({
+      ...prev,
+      [platform]: { ...prev[platform], ...updates },
+    }));
+  }, []);
+
+  // Get current platform's data
+  const currentData = platformData[activePlatform];
+
+  const addDebugLog = useCallback((
+    type: DebugLog['type'],
+    category: string,
+    message: string,
+    data?: unknown
+  ) => {
+    setDebugLogs(prev => [...prev.slice(-99), {
+      timestamp: new Date(),
+      type,
+      category,
+      message,
+      data,
+    }]);
+  }, []);
+
+  // Load debug mode setting
+  useEffect(() => {
+    chrome.storage.local.get(['userSettings']).then(({ userSettings }) => {
+      if (userSettings?.debugMode) {
+        setDebugMode(true);
+        addDebugLog('info', 'SYSTEM', 'Debug mode enabled');
+      }
+    });
+
+    // Listen for settings changes
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.userSettings?.newValue?.debugMode !== undefined) {
+        setDebugMode(changes.userSettings.newValue.debugMode);
+        addDebugLog('info', 'SYSTEM', `Debug mode ${changes.userSettings.newValue.debugMode ? 'enabled' : 'disabled'}`);
+      }
+    };
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+  }, [addDebugLog]);
 
   useEffect(() => {
     const handleMessage = (message: { type: string; payload?: unknown }) => {
+      addDebugLog('message', 'MESSAGE', `Received: ${message.type}`, message.payload);
+
       if (message.type === 'ANALYSIS_RESULT') {
-        setResult(message.payload as AnalysisResult);
-        setLoading(false);
-        setLoadingStep('idle');
+        const data = message.payload as AnalysisResult & { source?: Platform };
+        const platform = data.source || activePlatform;
+        addDebugLog('info', 'ANALYSIS', `Result for ${platform}: ${data.words.length} words, ${data.phrases.length} phrases, ${data.sentences.length} sentences`);
+        updatePlatformData(platform, {
+          result: data,
+          loading: false,
+          loadingStep: 'idle',
+        });
       } else if (message.type === 'SUBTITLE_CAPTURED') {
         const payload = message.payload as SubtitleCapturedPayload;
-        setCurrentSource(payload.title);
-        setSubtitleStatus(null); // Clear status when subtitle is captured
-        setLoadingStep('collecting');
+        const platform = payload.source as Platform;
+        addDebugLog('info', 'SUBTITLE', `Captured from ${platform}: "${payload.text.substring(0, 50)}..."`);
+
+        // Auto-switch to the active platform
+        setActivePlatform(platform);
+
+        // 如果來源改變，重置結果
+        if (payload.title !== currentSourceRef.current[platform]) {
+          addDebugLog('warn', 'SUBTITLE', `Source changed for ${platform}: "${currentSourceRef.current[platform]}" -> "${payload.title}"`);
+          updatePlatformData(platform, {
+            result: null,
+            loading: false,
+            loadingStep: 'idle',
+          });
+        }
+        currentSourceRef.current[platform] = payload.title;
+        updatePlatformData(platform, {
+          currentSource: payload.title,
+          subtitleStatus: null,
+        });
       } else if (message.type === 'SUBTITLE_STATUS') {
         const payload = message.payload as SubtitleStatusPayload;
-        setSubtitleStatus(payload);
+        const platform = payload.source as Platform;
+        addDebugLog('info', 'STATUS', `${platform}: ${payload.status} - ${payload.message}`);
+        updatePlatformData(platform, { subtitleStatus: payload });
+        // Auto-switch to the platform that's sending status
+        setActivePlatform(platform);
       }
     };
 
     chrome.runtime.onMessage.addListener(handleMessage);
     return () => chrome.runtime.onMessage.removeListener(handleMessage);
-  }, []);
+  }, [addDebugLog, activePlatform, updatePlatformData]);
 
   const requestAnalysis = () => {
+    addDebugLog('info', 'API', `Sending ANALYZE_REQUEST for ${activePlatform}`, { filter });
     chrome.runtime.sendMessage({
       type: 'ANALYZE_REQUEST',
-      payload: { filter }
+      payload: { filter, platform: activePlatform }
     });
-    setLoading(true);
-    setLoadingStep('analyzing');
+    updatePlatformData(activePlatform, {
+      loading: true,
+      loadingStep: 'analyzing',
+    });
+  };
+
+  const clearDebugLogs = () => {
+    setDebugLogs([]);
+    addDebugLog('info', 'SYSTEM', 'Logs cleared');
   };
 
   // Filter words based on current filter settings
   const filteredWords = useMemo(() => {
-    if (!result?.words) return [];
+    if (!currentData.result?.words) return [];
 
-    let words = result.words;
+    let words = currentData.result.words;
 
     // Filter by part of speech
     if (filter.posFilter && filter.posFilter.length > 0) {
@@ -164,11 +271,16 @@ function App() {
     }
 
     return words;
-  }, [result?.words, filter]);
+  }, [currentData.result?.words, filter]);
 
   const openSettings = () => {
-    chrome.runtime.sendMessage({ type: 'OPEN_POPUP' });
+    setPage('settings');
   };
+
+  // Render settings page if on settings view
+  if (page === 'settings') {
+    return <SettingsPage onBack={() => setPage('main')} />;
+  }
 
   return (
     <div className="min-h-screen bg-background p-4">
@@ -189,52 +301,104 @@ function App() {
             variant="outline"
             size="sm"
             onClick={requestAnalysis}
-            disabled={loading}
+            disabled={currentData.loading}
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 mr-2 ${currentData.loading ? 'animate-spin' : ''}`} />
             分析
           </Button>
         </div>
       </div>
 
-      {currentSource && (
+      {/* Platform Tabs */}
+      <div className="flex gap-2 mb-4">
+        <Button
+          variant={activePlatform === 'youtube' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setActivePlatform('youtube')}
+          className="flex-1"
+        >
+          <Youtube className="h-4 w-4 mr-2" />
+          YouTube
+          {platformData.youtube.currentSource && (
+            <Badge variant="secondary" className="ml-2 text-xs">
+              {platformData.youtube.result ? '✓' : '...'}
+            </Badge>
+          )}
+        </Button>
+        <Button
+          variant={activePlatform === 'netflix' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setActivePlatform('netflix')}
+          className="flex-1"
+        >
+          <Tv className="h-4 w-4 mr-2" />
+          Netflix
+          {platformData.netflix.currentSource && (
+            <Badge variant="secondary" className="ml-2 text-xs">
+              {platformData.netflix.result ? '✓' : '...'}
+            </Badge>
+          )}
+        </Button>
+      </div>
+
+      {currentData.currentSource && (
         <p className="text-sm text-muted-foreground mb-4 truncate">
-          來源: {currentSource}
+          來源: {currentData.currentSource}
         </p>
       )}
 
       {/* Subtitle Status */}
-      {subtitleStatus && (
+      {currentData.subtitleStatus && (
         <Card className={`mb-4 ${
-          subtitleStatus.status === 'not_found' ? 'border-destructive' :
-          subtitleStatus.status === 'found' ? 'border-green-500' :
+          currentData.subtitleStatus.status === 'not_found' ? 'border-destructive' :
+          currentData.subtitleStatus.status === 'found' ? 'border-green-500' :
           'border-yellow-500'
         }`}>
           <CardContent className="py-3">
             <div className="flex items-center gap-2">
-              {subtitleStatus.status === 'searching' && (
+              {currentData.subtitleStatus.status === 'searching' && (
                 <Search className="h-4 w-4 text-yellow-500 animate-pulse" />
               )}
-              {subtitleStatus.status === 'retrying' && (
+              {currentData.subtitleStatus.status === 'retrying' && (
                 <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
               )}
-              {subtitleStatus.status === 'not_found' && (
+              {currentData.subtitleStatus.status === 'not_found' && (
                 <AlertCircle className="h-4 w-4 text-destructive" />
               )}
-              {subtitleStatus.status === 'found' && (
+              {currentData.subtitleStatus.status === 'found' && (
                 <CheckCircle className="h-4 w-4 text-green-500" />
               )}
               <span className={`text-sm ${
-                subtitleStatus.status === 'not_found' ? 'text-destructive' :
-                subtitleStatus.status === 'found' ? 'text-green-600' :
+                currentData.subtitleStatus.status === 'not_found' ? 'text-destructive' :
+                currentData.subtitleStatus.status === 'found' ? 'text-green-600' :
                 'text-yellow-600'
               }`}>
-                {subtitleStatus.message}
+                {currentData.subtitleStatus.message}
               </span>
-              <Badge variant="outline" className="ml-auto text-xs">
-                {subtitleStatus.source === 'youtube' ? 'YouTube' : 'Netflix'}
-              </Badge>
             </div>
+            {/* Solution for not found */}
+            {currentData.subtitleStatus.status === 'not_found' && (
+              <div className="mt-3 pt-3 border-t border-dashed">
+                <p className="text-xs font-medium mb-2">解決方法：</p>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  {activePlatform === 'youtube' ? (
+                    <>
+                      <li>• 按鍵盤「C」鍵開啟字幕</li>
+                      <li>• 點擊影片右下角的「CC」按鈕</li>
+                      <li>• 確認影片有提供字幕（自動產生或手動上傳）</li>
+                      <li>• 重新整理頁面後再試一次</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>• 點擊影片下方的對話框圖示開啟字幕</li>
+                      <li>• 在設定中選擇字幕語言</li>
+                      <li>• 確認節目有提供字幕</li>
+                      <li>• 重新整理頁面後再試一次</li>
+                    </>
+                  )}
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -243,38 +407,41 @@ function App() {
       <FilterPanel
         onFilterChange={setFilter}
         onAnalyze={requestAnalysis}
-        isLoading={loading}
+        isLoading={currentData.loading}
       />
 
-      {loading && (
+      {currentData.loading && (
         <div className="flex flex-col items-center justify-center py-12 gap-4">
           <RefreshCw className="h-8 w-8 animate-spin text-primary" />
           <div className="text-center">
             <p className="text-sm font-medium">
-              {loadingStep === 'collecting' && '收集字幕中...'}
-              {loadingStep === 'analyzing' && '正在分析內容...'}
-              {loadingStep === 'processing' && '處理結果中...'}
-              {loadingStep === 'idle' && '載入中...'}
+              {currentData.loadingStep === 'collecting' && '收集字幕中...'}
+              {currentData.loadingStep === 'analyzing' && '正在分析內容...'}
+              {currentData.loadingStep === 'processing' && '處理結果中...'}
+              {currentData.loadingStep === 'idle' && '載入中...'}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {loadingStep === 'collecting' && '請繼續播放影片以收集更多字幕'}
-              {loadingStep === 'analyzing' && '使用 AI 分析學習內容，請稍候'}
-              {loadingStep === 'processing' && '即將完成'}
+              {currentData.loadingStep === 'collecting' && '請繼續播放影片以收集更多字幕'}
+              {currentData.loadingStep === 'analyzing' && '使用 AI 分析學習內容，請稍候'}
+              {currentData.loadingStep === 'processing' && '即將完成'}
             </p>
           </div>
         </div>
       )}
 
-      {!loading && !result && (
+      {!currentData.loading && !currentData.result && (
         <div className="text-center py-12 text-muted-foreground">
           <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>播放 YouTube 或 Netflix 影片</p>
+          <p>播放 {activePlatform === 'youtube' ? 'YouTube' : 'Netflix'} 影片</p>
           <p className="text-sm">我們會自動捕捉字幕並分析學習內容</p>
-          <p className="text-xs mt-4">v1.0.2 - 支援 AI 篩選</p>
+          <p className="text-xs mt-4 text-orange-600">
+            如果沒有反應，請重新整理影片頁面
+          </p>
+          <p className="text-xs mt-2">v1.0.3 - 支援平台分頁</p>
         </div>
       )}
 
-      {!loading && result && (
+      {!currentData.loading && currentData.result && (
         <Tabs defaultValue="words" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="words" className="flex items-center gap-1">
@@ -283,11 +450,11 @@ function App() {
             </TabsTrigger>
             <TabsTrigger value="phrases" className="flex items-center gap-1">
               <MessageSquare className="h-4 w-4" />
-              片語 ({result.phrases.length})
+              片語 ({currentData.result.phrases.length})
             </TabsTrigger>
             <TabsTrigger value="sentences" className="flex items-center gap-1">
               <Quote className="h-4 w-4" />
-              句型 ({result.sentences.length})
+              句型 ({currentData.result.sentences.length})
             </TabsTrigger>
           </TabsList>
 
@@ -304,17 +471,22 @@ function App() {
           </TabsContent>
 
           <TabsContent value="phrases" className="mt-4">
-            {result.phrases.map((phrase, index) => (
+            {currentData.result.phrases.map((phrase, index) => (
               <PhraseCard key={index} phrase={phrase} />
             ))}
           </TabsContent>
 
           <TabsContent value="sentences" className="mt-4">
-            {result.sentences.map((sentence, index) => (
+            {currentData.result.sentences.map((sentence, index) => (
               <SentenceCard key={index} sentence={sentence} />
             ))}
           </TabsContent>
         </Tabs>
+      )}
+
+      {/* Debug Panel - only show in debug mode */}
+      {debugMode && (
+        <DebugPanel logs={debugLogs} onClear={clearDebugLogs} />
       )}
     </div>
   );

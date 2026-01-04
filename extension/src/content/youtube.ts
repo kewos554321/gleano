@@ -2,11 +2,15 @@ import type { SubtitleCapturedPayload, SubtitleStatusPayload } from '@gleano/sha
 
 class YouTubeSubtitleCapture {
   private observer: MutationObserver | null = null;
+  private playerObserver: MutationObserver | null = null;
+  private pollInterval: ReturnType<typeof setInterval> | null = null;
   private capturedText: string[] = [];
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSentText: string = '';
+  private lastCapturedText: string = '';
   private retryCount: number = 0;
-  private maxRetries: number = 10;
+  private maxRetries: number = 15;
+  private hasFoundSubtitles: boolean = false;
 
   constructor() {
     this.init();
@@ -15,6 +19,14 @@ class YouTubeSubtitleCapture {
   private init() {
     // Wait for video player to load
     this.waitForPlayer();
+  }
+
+  private log(message: string, data?: unknown) {
+    if (data) {
+      console.log(`[Gleano] ${message}`, data);
+    } else {
+      console.log(`[Gleano] ${message}`);
+    }
   }
 
   private sendStatus(status: SubtitleStatusPayload['status'], message: string) {
@@ -41,8 +53,22 @@ class YouTubeSubtitleCapture {
   }
 
   private startObserving() {
-    // Observe caption container
-    const captionContainer = document.querySelector('.ytp-caption-window-container');
+    // Try multiple caption container selectors
+    const containerSelectors = [
+      '.ytp-caption-window-container',
+      '.caption-window',
+      '.ytp-caption-window-bottom',
+      '.ytp-caption-window-top',
+    ];
+
+    let captionContainer: Element | null = null;
+    for (const selector of containerSelectors) {
+      captionContainer = document.querySelector(selector);
+      if (captionContainer) {
+        this.log(`Found caption container: ${selector}`);
+        break;
+      }
+    }
 
     if (captionContainer) {
       this.sendStatus('found', '已找到字幕容器，等待字幕...');
@@ -56,41 +82,128 @@ class YouTubeSubtitleCapture {
         subtree: true,
         characterData: true,
       });
+
+      // Also start polling for subtitles (backup for auto-generated)
+      this.startPolling();
     } else {
       this.retryCount++;
 
       if (this.retryCount >= this.maxRetries) {
         this.sendStatus('not_found', '找不到字幕，請確認影片已開啟字幕 (按 C 鍵)');
-        console.log('[Gleano] Subtitle container not found after max retries');
+        this.log('Subtitle container not found after max retries');
+        // Keep polling anyway in case subtitles appear later
+        this.startPolling();
       } else {
         this.sendStatus('retrying', `正在尋找字幕... (${this.retryCount}/${this.maxRetries})`);
-        // Caption container not found, try again later
         setTimeout(() => this.startObserving(), 2000);
       }
     }
 
-    // Also observe for dynamic caption container creation
+    // Observe the entire player for dynamic caption container creation
     const playerContainer = document.querySelector('.html5-video-player');
-    if (playerContainer) {
-      const containerObserver = new MutationObserver(() => {
-        const newCaptionContainer = document.querySelector('.ytp-caption-window-container');
-        if (newCaptionContainer && !this.observer) {
-          this.startObserving();
+    if (playerContainer && !this.playerObserver) {
+      this.playerObserver = new MutationObserver(() => {
+        if (!this.observer) {
+          for (const selector of containerSelectors) {
+            const newContainer = document.querySelector(selector);
+            if (newContainer) {
+              this.log(`Caption container appeared: ${selector}`);
+              this.startObserving();
+              break;
+            }
+          }
         }
       });
-      containerObserver.observe(playerContainer, { childList: true, subtree: true });
+      this.playerObserver.observe(playerContainer, { childList: true, subtree: true });
     }
   }
 
-  private handleMutations(_mutations: MutationRecord[]) {
-    // Get all caption segments
-    const segments = document.querySelectorAll('.ytp-caption-segment');
-    const text = Array.from(segments)
-      .map((seg) => seg.textContent?.trim())
-      .filter(Boolean)
-      .join(' ');
+  private startPolling() {
+    if (this.pollInterval) return;
 
-    if (text && text !== this.lastSentText) {
+    // Poll every 500ms for subtitle text (catches auto-generated subtitles)
+    this.pollInterval = setInterval(() => {
+      this.checkForSubtitles();
+    }, 500);
+    this.log('Started subtitle polling');
+  }
+
+  private checkForSubtitles() {
+    const text = this.extractSubtitleText();
+    if (text && text !== this.lastCapturedText) {
+      this.lastCapturedText = text;
+
+      if (!this.hasFoundSubtitles) {
+        this.hasFoundSubtitles = true;
+        this.sendStatus('found', '成功捕捉到字幕！');
+        this.log('First subtitle captured via polling');
+      }
+
+      this.capturedText.push(text);
+      this.debounceSend();
+    }
+  }
+
+  private extractSubtitleText(): string {
+    // All possible selectors for YouTube subtitles (regular + auto-generated)
+    const selectors = [
+      // Standard caption segments
+      '.ytp-caption-segment',
+      // Caption window content
+      '.ytp-caption-window-container .captions-text span',
+      '.ytp-caption-window-container span[class]',
+      '.ytp-caption-window-bottom span',
+      '.ytp-caption-window-top span',
+      // Auto-generated specific
+      '.caption-visual-line',
+      '.captions-text',
+      // Fallback - any text in caption containers
+      '.ytp-caption-window-container *',
+    ];
+
+    for (const selector of selectors) {
+      const elements = document.querySelectorAll(selector);
+      if (elements.length > 0) {
+        const texts: string[] = [];
+        elements.forEach(el => {
+          // Only get direct text content, avoid duplicates from nested elements
+          const text = el.textContent?.trim();
+          if (text && !texts.includes(text)) {
+            texts.push(text);
+          }
+        });
+        const combined = texts.join(' ').trim();
+        if (combined) {
+          return combined;
+        }
+      }
+    }
+
+    // Last resort: get all text from any caption-related container
+    const containers = document.querySelectorAll('[class*="caption"]');
+    for (const container of containers) {
+      const text = container.textContent?.trim();
+      if (text && text.length > 0 && text.length < 500) {
+        return text;
+      }
+    }
+
+    return '';
+  }
+
+  private handleMutations(_mutations: MutationRecord[]) {
+    // Use the unified extraction method
+    const text = this.extractSubtitleText();
+
+    if (text && text !== this.lastCapturedText) {
+      this.lastCapturedText = text;
+
+      if (!this.hasFoundSubtitles) {
+        this.hasFoundSubtitles = true;
+        this.sendStatus('found', '成功捕捉到字幕！');
+        this.log('First subtitle captured via mutation observer');
+      }
+
       this.capturedText.push(text);
       this.debounceSend();
     }
@@ -140,9 +253,18 @@ class YouTubeSubtitleCapture {
       this.observer.disconnect();
       this.observer = null;
     }
+    if (this.playerObserver) {
+      this.playerObserver.disconnect();
+      this.playerObserver = null;
+    }
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
+    this.log('Subtitle capture destroyed');
   }
 }
 

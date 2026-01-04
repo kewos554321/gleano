@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { CEFR_LABELS, LEARNING_GOALS, type CEFRLevel, type LearningGoal, type UserSettings } from '@gleano/shared';
-import { BookOpen, Settings, Target, Bug, MousePointer } from 'lucide-react';
+import { ArrowLeft, Target, Bug, MousePointer } from 'lucide-react';
 
 const LANGUAGES = [
   { code: 'en', name: 'English' },
@@ -22,7 +22,11 @@ const NATIVE_LANGUAGES = [
   { code: 'en', name: 'English' },
 ];
 
-function App() {
+interface SettingsPageProps {
+  onBack: () => void;
+}
+
+export function SettingsPage({ onBack }: SettingsPageProps) {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,36 +51,33 @@ function App() {
   }, []);
 
   const updateSettings = (updates: Partial<UserSettings>) => {
-    /* c8 ignore next */
     if (!settings) return;
     const newSettings = { ...settings, ...updates };
     chrome.storage.local.set({ userSettings: newSettings });
     setSettings(newSettings);
   };
 
-  const openSidePanel = () => {
-    chrome.runtime.sendMessage({ type: 'OPEN_SIDEPANEL' });
-  };
-
   if (loading) {
     return (
-      <div className="w-80 p-4 flex items-center justify-center">
+      <div className="min-h-screen bg-background p-4 flex items-center justify-center">
         <p className="text-muted-foreground">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="w-80">
+    <div className="min-h-screen bg-background p-4">
       <Card className="border-0 shadow-none">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <BookOpen className="h-5 w-5 text-primary" />
-            Gleano
-          </CardTitle>
-          <CardDescription>
-            從 YouTube / Netflix 學習語言
-          </CardDescription>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={onBack}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <CardTitle className="text-lg">設定</CardTitle>
+              <CardDescription>調整你的學習偏好</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -217,11 +218,6 @@ function App() {
             />
           </div>
 
-          <Button className="w-full" onClick={openSidePanel}>
-            <Settings className="mr-2 h-4 w-4" />
-            開啟學習面板
-          </Button>
-
           <p className="text-xs text-center text-muted-foreground pt-2">
             v1.0.2 - 支援學習目標設定
           </p>
@@ -230,5 +226,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

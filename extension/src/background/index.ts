@@ -8,6 +8,73 @@ let subtitleBuffer: string[] = [];
 let lastAnalysisTime = 0;
 const ANALYSIS_COOLDOWN = 10000; // 10 seconds between analyses
 
+// Panel behavior functions (declared early for use in onInstalled)
+function updatePanelBehavior(defaultAction: 'sidepanel' | 'popup') {
+  if (defaultAction === 'sidepanel') {
+    // Sidepanel mode: clicking icon opens sidepanel automatically
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+    chrome.action.setPopup({ popup: '' }); // Disable popup
+  } else {
+    // Popup mode: clicking icon opens popup
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+    chrome.action.setPopup({ popup: 'src/popup/index.html' });
+  }
+}
+
+async function initPanelBehavior() {
+  const { userSettings } = await chrome.storage.local.get(['userSettings']);
+  const defaultAction = userSettings?.defaultAction || 'sidepanel';
+  updatePanelBehavior(defaultAction);
+}
+
+// Create context menu items and initialize on install
+chrome.runtime.onInstalled.addListener(async () => {
+  // Create context menus
+  chrome.contextMenus.create({
+    id: 'open-sidepanel',
+    title: '開啟學習面板',
+    contexts: ['action'],
+  });
+  chrome.contextMenus.create({
+    id: 'open-settings',
+    title: '開啟設定',
+    contexts: ['action'],
+  });
+
+  // Initialize panel behavior on install
+  await initPanelBehavior();
+});
+
+// Handle context menu clicks
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId === 'open-sidepanel') {
+    openSidePanel();
+  } else if (info.menuItemId === 'open-settings') {
+    chrome.action.openPopup();
+  }
+});
+
+// Handle action (icon) click based on user settings
+chrome.action.onClicked.addListener(async () => {
+  const { userSettings } = await chrome.storage.local.get(['userSettings']);
+  const defaultAction = userSettings?.defaultAction || 'sidepanel';
+
+  if (defaultAction === 'sidepanel') {
+    openSidePanel();
+  }
+  // If defaultAction is 'popup', the popup will open automatically (handled by manifest)
+});
+
+// Update panel behavior when settings change
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.userSettings?.newValue?.defaultAction !== undefined) {
+    updatePanelBehavior(changes.userSettings.newValue.defaultAction);
+  }
+});
+
+// Also init on service worker startup (not just install)
+initPanelBehavior();
+
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   handleMessage(message, sendResponse);
@@ -42,6 +109,12 @@ async function handleMessage(
       }).catch(() => {
         // Sidepanel might not be open
       });
+      sendResponse({ success: true });
+      break;
+
+    case 'OPEN_POPUP':
+      // Open popup window as a new tab since programmatic popup opening has limitations
+      chrome.tabs.create({ url: chrome.runtime.getURL('src/popup/index.html') });
       sendResponse({ success: true });
       break;
 
@@ -140,11 +213,6 @@ async function openSidePanel() {
     console.error('[Gleano] Error opening side panel:', error);
   }
 }
-
-// Set up side panel behavior
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {
-  // Older Chrome versions might not support this
-});
 
 console.log('[Gleano] Background service worker initialized');
 
