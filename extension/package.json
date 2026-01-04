@@ -10,8 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src --ext .ts,.tsx --ignore-pattern '__tests__/**'",
-    "lint:fix": "eslint src --ext .ts,.tsx --ignore-pattern '__tests__/**' --fix",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
