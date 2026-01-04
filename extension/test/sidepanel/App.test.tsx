@@ -268,6 +268,7 @@ describe('Sidepanel App', () => {
 
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
       type: 'ANALYZE_REQUEST',
+      payload: { filter: {} },
     });
   });
 

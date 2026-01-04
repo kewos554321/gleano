@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CEFR_LABELS, type CEFRLevel, type UserSettings } from '@gleano/shared';
-import { BookOpen, Settings } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { CEFR_LABELS, LEARNING_GOALS, type CEFRLevel, type LearningGoal, type UserSettings } from '@gleano/shared';
+import { BookOpen, Settings, Target } from 'lucide-react';
 
 const LANGUAGES = [
   { code: 'en', name: 'English' },
@@ -34,6 +35,8 @@ function App() {
           nativeLanguage: 'zh-TW',
           targetLanguage: 'en',
           level: 3,
+          learningGoal: 'general',
+          customDifficulty: 5,
         };
         chrome.storage.local.set({ userSettings: defaultSettings });
         setSettings(defaultSettings);
@@ -132,13 +135,59 @@ function App() {
             </Select>
           </div>
 
+          <div className="space-y-2">
+            <label className="text-sm font-medium flex items-center gap-1">
+              <Target className="h-4 w-4" />
+              學習目標
+            </label>
+            <Select
+              value={settings?.learningGoal || 'general'}
+              onValueChange={(value) => updateSettings({ learningGoal: value as LearningGoal })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(LEARNING_GOALS).map(([goal, { label, description }]) => (
+                  <SelectItem key={goal} value={goal}>
+                    <div className="flex flex-col">
+                      <span>{label}</span>
+                      <span className="text-xs text-muted-foreground">{description}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">自訂難度</label>
+              <span className="text-sm text-muted-foreground">
+                {settings?.customDifficulty || 5}/10
+              </span>
+            </div>
+            <Slider
+              value={[settings?.customDifficulty || 5]}
+              onValueChange={(value) => updateSettings({ customDifficulty: value[0] })}
+              min={1}
+              max={10}
+              step={1}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>簡單</span>
+              <span>困難</span>
+            </div>
+          </div>
+
           <Button className="w-full" onClick={openSidePanel}>
             <Settings className="mr-2 h-4 w-4" />
             開啟學習面板
           </Button>
 
           <p className="text-xs text-center text-muted-foreground pt-2">
-            v1.0.1 - API 已連線
+            v1.0.2 - 支援學習目標設定
           </p>
         </CardContent>
       </Card>

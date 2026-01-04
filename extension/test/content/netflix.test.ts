@@ -177,8 +177,10 @@ describe('Netflix Subtitle Capture', () => {
     await vi.advanceTimersByTimeAsync(0);
     vi.advanceTimersByTime(3000);
 
-    // Should not have sent any messages since no .player-timedtext exists
-    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    // Should not have sent SUBTITLE_CAPTURED since no .player-timedtext exists (status messages are ok)
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SUBTITLE_CAPTURED' })
+    );
   });
 
   it('should return early when player-timedtext is removed mid-observation', async () => {
@@ -286,8 +288,10 @@ describe('Netflix Subtitle Capture', () => {
     await vi.advanceTimersByTimeAsync(0);
     vi.advanceTimersByTime(3000);
 
-    // Should not send message for empty text
-    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    // Should not send SUBTITLE_CAPTURED for empty text (status messages are ok)
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SUBTITLE_CAPTURED' })
+    );
   });
 
   it('should not send duplicate fullText after joining buffer', async () => {

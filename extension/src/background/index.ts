@@ -34,6 +34,17 @@ async function handleMessage(
       sendResponse({ success: true });
       break;
 
+    case 'SUBTITLE_STATUS':
+      // Forward status to sidepanel
+      chrome.runtime.sendMessage({
+        type: 'SUBTITLE_STATUS',
+        payload: message.payload,
+      }).catch(() => {
+        // Sidepanel might not be open
+      });
+      sendResponse({ success: true });
+      break;
+
     default:
       sendResponse({ success: false, error: 'Unknown message type' });
   }

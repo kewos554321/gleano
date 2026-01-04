@@ -1,10 +1,13 @@
-import type { SubtitleCapturedPayload } from '@gleano/shared';
+import type { SubtitleCapturedPayload, SubtitleStatusPayload } from '@gleano/shared';
 
 class NetflixSubtitleCapture {
   private observer: MutationObserver | null = null;
   private capturedText: string[] = [];
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSentText: string = '';
+  private retryCount: number = 0;
+  private maxRetries: number = 10;
+  private subtitleCheckTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.init();
@@ -15,7 +18,19 @@ class NetflixSubtitleCapture {
     this.waitForPlayer();
   }
 
+  private sendStatus(status: SubtitleStatusPayload['status'], message: string) {
+    const payload: SubtitleStatusPayload = {
+      status,
+      source: 'netflix',
+      message,
+      retryCount: this.retryCount,
+    };
+    chrome.runtime.sendMessage({ type: 'SUBTITLE_STATUS', payload });
+  }
+
   private waitForPlayer() {
+    this.sendStatus('searching', '正在尋找 Netflix 播放器...');
+
     const checkPlayer = setInterval(() => {
       const player = document.querySelector('.watch-video');
       if (player) {
@@ -31,6 +46,8 @@ class NetflixSubtitleCapture {
     // Note: waitForPlayer ensures .watch-video exists before this is called
     const container = document.querySelector('.watch-video')!;
 
+    this.sendStatus('found', '已找到播放器，等待字幕...');
+
     this.observer = new MutationObserver((mutations) => {
       this.handleMutations(mutations);
     });
@@ -40,6 +57,26 @@ class NetflixSubtitleCapture {
       subtree: true,
       characterData: true,
     });
+
+    // Check for subtitles after a delay
+    this.subtitleCheckTimer = setTimeout(() => {
+      this.checkSubtitleAvailability();
+    }, 5000);
+  }
+
+  private checkSubtitleAvailability() {
+    const subtitleContainer = document.querySelector('.player-timedtext');
+    if (!subtitleContainer) {
+      this.retryCount++;
+      if (this.retryCount >= this.maxRetries) {
+        this.sendStatus('not_found', '找不到字幕，請確認已開啟字幕設定');
+      } else {
+        this.sendStatus('retrying', `正在尋找字幕... (${this.retryCount}/${this.maxRetries})`);
+        this.subtitleCheckTimer = setTimeout(() => {
+          this.checkSubtitleAvailability();
+        }, 2000);
+      }
+    }
   }
 
   private handleMutations(_mutations: MutationRecord[]) {
@@ -111,6 +148,9 @@ class NetflixSubtitleCapture {
     }
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
+    }
+    if (this.subtitleCheckTimer) {
+      clearTimeout(this.subtitleCheckTimer);
     }
   }
 }

@@ -229,8 +229,10 @@ describe('YouTube Subtitle Capture', () => {
     await vi.advanceTimersByTimeAsync(0);
     vi.advanceTimersByTime(3000);
 
-    // Should not send for empty text
-    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    // Should not send SUBTITLE_CAPTURED for empty text (status messages are ok)
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SUBTITLE_CAPTURED' })
+    );
   });
 
   it('should not send when fullText equals lastSentText', async () => {

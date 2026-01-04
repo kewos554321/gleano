@@ -1,6 +1,14 @@
 import '@testing-library/jest-dom';
 import { vi, beforeEach } from 'vitest';
 
+// Mock ResizeObserver for Radix UI components
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+globalThis.ResizeObserver = ResizeObserverMock;
+
 // Create fresh chrome mock for each test
 function createChromeMock() {
   return {

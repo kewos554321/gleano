@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { CEFRLevel } from '@gleano/shared';
+import type { CEFRLevel, LearningGoal, AnalysisFilter } from '@gleano/shared';
 import { analyzeWithGemini } from '../services/ai';
 
 interface Env {
@@ -16,6 +16,9 @@ interface AnalyzeRequestBody {
   level: CEFRLevel;
   sourceUrl?: string;
   sourceTitle?: string;
+  learningGoal?: LearningGoal;
+  customDifficulty?: number;
+  filter?: AnalysisFilter;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -24,7 +27,18 @@ app.post('/', async (c) => {
   try {
     const body = await c.req.json<AnalyzeRequestBody>();
 
-    const { transcript, userId, nativeLanguage, targetLanguage, level, sourceUrl, sourceTitle } = body;
+    const {
+      transcript,
+      userId,
+      nativeLanguage,
+      targetLanguage,
+      level,
+      sourceUrl,
+      sourceTitle,
+      learningGoal,
+      customDifficulty,
+      filter,
+    } = body;
 
     if (!transcript || transcript.trim().length === 0) {
       return c.json({ success: false, error: 'Transcript is required' }, 400);
@@ -57,7 +71,12 @@ app.post('/', async (c) => {
       nativeLanguage,
       targetLanguage,
       level,
-      c.env.GEMINI_API_KEY
+      c.env.GEMINI_API_KEY,
+      {
+        learningGoal,
+        customDifficulty,
+        filter,
+      }
     );
 
     // Store learned items in database

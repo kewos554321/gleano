@@ -1,10 +1,12 @@
-import type { SubtitleCapturedPayload } from '@gleano/shared';
+import type { SubtitleCapturedPayload, SubtitleStatusPayload } from '@gleano/shared';
 
 class YouTubeSubtitleCapture {
   private observer: MutationObserver | null = null;
   private capturedText: string[] = [];
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSentText: string = '';
+  private retryCount: number = 0;
+  private maxRetries: number = 10;
 
   constructor() {
     this.init();
@@ -15,7 +17,19 @@ class YouTubeSubtitleCapture {
     this.waitForPlayer();
   }
 
+  private sendStatus(status: SubtitleStatusPayload['status'], message: string) {
+    const payload: SubtitleStatusPayload = {
+      status,
+      source: 'youtube',
+      message,
+      retryCount: this.retryCount,
+    };
+    chrome.runtime.sendMessage({ type: 'SUBTITLE_STATUS', payload });
+  }
+
   private waitForPlayer() {
+    this.sendStatus('searching', '正在尋找 YouTube 播放器...');
+
     const checkPlayer = setInterval(() => {
       const player = document.querySelector('.html5-video-player');
       if (player) {
@@ -31,6 +45,8 @@ class YouTubeSubtitleCapture {
     const captionContainer = document.querySelector('.ytp-caption-window-container');
 
     if (captionContainer) {
+      this.sendStatus('found', '已找到字幕容器，等待字幕...');
+
       this.observer = new MutationObserver((mutations) => {
         this.handleMutations(mutations);
       });
@@ -41,8 +57,16 @@ class YouTubeSubtitleCapture {
         characterData: true,
       });
     } else {
-      // Caption container not found, try again later
-      setTimeout(() => this.startObserving(), 2000);
+      this.retryCount++;
+
+      if (this.retryCount >= this.maxRetries) {
+        this.sendStatus('not_found', '找不到字幕，請確認影片已開啟字幕 (按 C 鍵)');
+        console.log('[Gleano] Subtitle container not found after max retries');
+      } else {
+        this.sendStatus('retrying', `正在尋找字幕... (${this.retryCount}/${this.maxRetries})`);
+        // Caption container not found, try again later
+        setTimeout(() => this.startObserving(), 2000);
+      }
     }
 
     // Also observe for dynamic caption container creation
