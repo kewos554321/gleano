@@ -26,6 +26,13 @@ vi.mock('@/components/ui/select', () => ({
         <option value="4">B2</option>
         <option value="5">C1</option>
         <option value="6">C2</option>
+        <option value="general">綜合學習</option>
+        <option value="vocabulary">單字擴充</option>
+        <option value="conversation">日常對話</option>
+        <option value="business">商務英語</option>
+        <option value="academic">學術寫作</option>
+        <option value="sidepanel">開啟學習面板</option>
+        <option value="popup">開啟設定</option>
       </select>
     </div>
   ),
@@ -35,31 +42,63 @@ vi.mock('@/components/ui/select', () => ({
   SelectItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+// Mock Slider component
+vi.mock('@/components/ui/slider', () => ({
+  Slider: ({ value, onValueChange }: { value: number[]; onValueChange?: (value: number[]) => void }) => (
+    <input
+      type="range"
+      data-testid="slider"
+      value={value[0]}
+      onChange={(e) => onValueChange?.([parseInt(e.target.value)])}
+      min={1}
+      max={10}
+    />
+  ),
+}));
+
+// Mock Switch component
+vi.mock('@/components/ui/switch', () => ({
+  Switch: ({ checked, onCheckedChange }: { checked: boolean; onCheckedChange?: (checked: boolean) => void }) => (
+    <input
+      type="checkbox"
+      data-testid="switch"
+      checked={checked}
+      onChange={(e) => onCheckedChange?.(e.target.checked)}
+    />
+  ),
+}));
+
 describe('Popup App', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Mock chrome.storage.local.get to return default settings
+    // Mock chrome.storage.local.get to return default settings (callback-based)
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockImplementation(
-      (keys, callback) => {
-        callback({
+      (_keys: unknown, callback?: (result: Record<string, unknown>) => void) => {
+        const result = {
           userSettings: {
             id: 'test-user',
             nativeLanguage: 'zh-TW',
             targetLanguage: 'en',
             level: 3,
+            learningGoal: 'general',
+            customDifficulty: 5,
+            defaultAction: 'sidepanel',
+            debugMode: false,
           },
-        });
+        };
+        if (callback) {
+          callback(result);
+        }
+        return Promise.resolve(result);
       }
     );
   });
 
   it('should render loading state initially', () => {
-    // Mock to delay callback
+    // Mock to not call callback (never resolves)
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockImplementation(
-      () => {
-        // Don't call callback immediately
-      }
+      () => new Promise(() => {})
     );
 
     render(<App />);
@@ -88,14 +127,17 @@ describe('Popup App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('開啟學習面板')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /開啟學習面板/ })).toBeInTheDocument();
     });
   });
 
   it('should create default settings if none exist', async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockImplementation(
-      (keys, callback) => {
-        callback({});
+      (_keys: unknown, callback?: (result: Record<string, unknown>) => void) => {
+        if (callback) {
+          callback({});
+        }
+        return Promise.resolve({});
       }
     );
 
@@ -110,7 +152,7 @@ describe('Popup App', () => {
     render(<App />);
 
     await waitFor(() => {
-      const button = screen.getByText('開啟學習面板');
+      const button = screen.getByRole('button', { name: /開啟學習面板/ });
       button.click();
     });
 
@@ -173,11 +215,11 @@ describe('Popup App', () => {
     });
   });
 
-  it('should not update settings when settings is null', async () => {
-    // Mock to never call callback, keeping settings null
-    (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      // Don't call callback
-    });
+  it('should not update settings when settings is null', () => {
+    // Mock to not call callback (keeps settings null)
+    (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise(() => {})
+    );
 
     render(<App />);
 

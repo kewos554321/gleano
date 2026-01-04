@@ -18,6 +18,9 @@ function createChromeMock() {
         addListener: vi.fn(),
         removeListener: vi.fn(),
       },
+      onInstalled: {
+        addListener: vi.fn(),
+      },
     },
     storage: {
       local: {
@@ -35,6 +38,10 @@ function createChromeMock() {
           return Promise.resolve();
         }),
       },
+      onChanged: {
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      },
     },
     tabs: {
       query: vi.fn().mockResolvedValue([{ id: 1 }]),
@@ -42,6 +49,19 @@ function createChromeMock() {
     sidePanel: {
       open: vi.fn().mockResolvedValue(undefined),
       setPanelBehavior: vi.fn().mockResolvedValue(undefined),
+    },
+    contextMenus: {
+      create: vi.fn(),
+      onClicked: {
+        addListener: vi.fn(),
+      },
+    },
+    action: {
+      setPopup: vi.fn(),
+      openPopup: vi.fn(),
+      onClicked: {
+        addListener: vi.fn(),
+      },
     },
   };
 }

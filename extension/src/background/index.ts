@@ -149,9 +149,13 @@ function handleSubtitleCaptured(payload: SubtitleCapturedPayload) {
   }
 }
 
+// API request timeout (30 seconds)
+const API_TIMEOUT = 30000;
+
 async function analyzeSubtitles() {
   if (subtitleBuffer.length === 0) {
     console.log('[Gleano] No subtitles to analyze');
+    sendAnalysisError('沒有字幕可分析，請先播放影片');
     return;
   }
 
@@ -168,7 +172,10 @@ async function analyzeSubtitles() {
       level: 3,
     };
 
-    // Call API
+    // Call API with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+
     const response = await fetch(`${API_BASE_URL}/api/analyze`, {
       method: 'POST',
       headers: {
@@ -181,7 +188,10 @@ async function analyzeSubtitles() {
         targetLanguage: settings.targetLanguage,
         level: settings.level,
       }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);
@@ -197,10 +207,26 @@ async function analyzeSubtitles() {
       }).catch(() => {
         // Sidepanel might not be open
       });
+    } else {
+      sendAnalysisError('分析失敗，請稍後再試');
     }
   } catch (error) {
     console.error('[Gleano] Analysis error:', error);
+    if (error instanceof Error && error.name === 'AbortError') {
+      sendAnalysisError('API 請求逾時，請檢查網路連線');
+    } else {
+      sendAnalysisError('分析失敗: ' + (error instanceof Error ? error.message : '未知錯誤'));
+    }
   }
+}
+
+function sendAnalysisError(message: string) {
+  chrome.runtime.sendMessage({
+    type: 'ANALYSIS_ERROR',
+    payload: { message },
+  }).catch(() => {
+    // Sidepanel might not be open
+  });
 }
 
 async function openSidePanel() {

@@ -12,6 +12,82 @@ describe('Netflix Subtitle Capture', () => {
     vi.resetModules();
   });
 
+  // Subtitle Availability Check Tests
+  describe('Subtitle Availability Check', () => {
+    it('should retry finding subtitle container and eventually fail', async () => {
+      document.body.innerHTML = `<div class="watch-video"></div>`;
+
+      await import('../../src/content/netflix');
+      vi.advanceTimersByTime(1000); // Wait for player
+
+      // Wait for initial check delay
+      vi.advanceTimersByTime(5000);
+
+      // Advance through all retries (10 retries * 2000ms each)
+      for (let i = 0; i < 10; i++) {
+        vi.advanceTimersByTime(2000);
+      }
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'SUBTITLE_STATUS',
+          payload: expect.objectContaining({
+            status: 'not_found',
+            message: '找不到字幕，請確認已開啟字幕設定',
+          }),
+        })
+      );
+    });
+
+    it('should send retrying status during retry attempts', async () => {
+      document.body.innerHTML = `<div class="watch-video"></div>`;
+
+      await import('../../src/content/netflix');
+      vi.advanceTimersByTime(1000); // Wait for player
+      vi.advanceTimersByTime(5000); // Initial check
+
+      // First retry
+      vi.advanceTimersByTime(2000);
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'SUBTITLE_STATUS',
+          payload: expect.objectContaining({
+            status: 'retrying',
+          }),
+        })
+      );
+    });
+
+    it('should find subtitle container on retry', async () => {
+      document.body.innerHTML = `<div class="watch-video"></div>`;
+
+      await import('../../src/content/netflix');
+      vi.advanceTimersByTime(1000); // Wait for player
+      vi.advanceTimersByTime(5000); // Initial check
+
+      // Add player-timedtext before next retry
+      const watchVideo = document.querySelector('.watch-video');
+      const timedtext = document.createElement('div');
+      timedtext.className = 'player-timedtext';
+      const span = document.createElement('span');
+      span.textContent = 'Found subtitle';
+      timedtext.appendChild(span);
+      watchVideo?.appendChild(timedtext);
+
+      vi.advanceTimersByTime(2000); // Retry
+      await vi.advanceTimersByTimeAsync(0);
+      vi.advanceTimersByTime(3000);
+
+      // Should capture the subtitle
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'SUBTITLE_CAPTURED',
+        })
+      );
+    });
+  });
+
   it('should wait for Netflix player and start observing', async () => {
     document.body.innerHTML = `
       <div class="watch-video">

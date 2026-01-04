@@ -26,7 +26,7 @@ describe('Sidepanel App', () => {
     render(<App />);
 
     expect(screen.getByText('學習內容')).toBeInTheDocument();
-    expect(screen.getByText('播放 YouTube 或 Netflix 影片')).toBeInTheDocument();
+    expect(screen.getByText('播放 YouTube 影片')).toBeInTheDocument();
   });
 
   it('should show loading state when subtitle is captured', async () => {
@@ -268,7 +268,7 @@ describe('Sidepanel App', () => {
 
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
       type: 'ANALYZE_REQUEST',
-      payload: { filter: {} },
+      payload: { filter: {}, platform: 'youtube' },
     });
   });
 

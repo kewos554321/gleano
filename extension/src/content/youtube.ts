@@ -9,8 +9,9 @@ class YouTubeSubtitleCapture {
   private lastSentText: string = '';
   private lastCapturedText: string = '';
   private retryCount: number = 0;
-  private maxRetries: number = 15;
+  private maxRetries: number = 20;
   private hasFoundSubtitles: boolean = false;
+  private hasCheckedCCButton: boolean = false;
 
   constructor() {
     this.init();
@@ -27,6 +28,21 @@ class YouTubeSubtitleCapture {
     } else {
       console.log(`[Gleano] ${message}`);
     }
+  }
+
+  // Check if CC button exists and its state
+  private checkCCButtonState(): { exists: boolean; enabled: boolean } {
+    // Try multiple selectors for the CC button
+    const ccButton = document.querySelector('.ytp-subtitles-button');
+    if (!ccButton) {
+      return { exists: false, enabled: false };
+    }
+
+    // Check if CC is enabled (aria-pressed="true" or has specific class)
+    const ariaPressed = ccButton.getAttribute('aria-pressed');
+    const isEnabled = ariaPressed === 'true';
+
+    return { exists: true, enabled: isEnabled };
   }
 
   private sendStatus(status: SubtitleStatusPayload['status'], message: string) {
@@ -53,12 +69,27 @@ class YouTubeSubtitleCapture {
   }
 
   private startObserving() {
+    // Check CC button state first
+    if (!this.hasCheckedCCButton) {
+      const ccState = this.checkCCButtonState();
+      this.hasCheckedCCButton = true;
+      this.log('CC button state:', ccState);
+
+      if (ccState.exists && !ccState.enabled) {
+        this.sendStatus('not_found', '請點擊 CC 按鈕或按 C 鍵開啟字幕');
+        // Keep trying in case user enables it
+      }
+    }
+
     // Try multiple caption container selectors
     const containerSelectors = [
       '.ytp-caption-window-container',
       '.caption-window',
       '.ytp-caption-window-bottom',
       '.ytp-caption-window-top',
+      // For newer YouTube player versions
+      '.ytp-caption-window-rollup',
+      '[class*="caption-window"]',
     ];
 
     let captionContainer: Element | null = null;
@@ -88,13 +119,26 @@ class YouTubeSubtitleCapture {
     } else {
       this.retryCount++;
 
+      // Check if CC button exists but not enabled
+      const ccState = this.checkCCButtonState();
+
       if (this.retryCount >= this.maxRetries) {
-        this.sendStatus('not_found', '找不到字幕，請確認影片已開啟字幕 (按 C 鍵)');
+        if (ccState.exists && !ccState.enabled) {
+          this.sendStatus('not_found', '字幕未開啟！請點擊播放器右下角的 CC 按鈕，或按鍵盤 C 鍵');
+        } else if (!ccState.exists) {
+          this.sendStatus('not_found', '此影片可能沒有字幕，請確認影片支援字幕功能');
+        } else {
+          this.sendStatus('not_found', '找不到字幕，請確認字幕已開啟');
+        }
         this.log('Subtitle container not found after max retries');
         // Keep polling anyway in case subtitles appear later
         this.startPolling();
       } else {
-        this.sendStatus('retrying', `正在尋找字幕... (${this.retryCount}/${this.maxRetries})`);
+        if (ccState.exists && !ccState.enabled) {
+          this.sendStatus('retrying', `請開啟字幕 (CC 按鈕)... (${this.retryCount}/${this.maxRetries})`);
+        } else {
+          this.sendStatus('retrying', `正在尋找字幕... (${this.retryCount}/${this.maxRetries})`);
+        }
         setTimeout(() => this.startObserving(), 2000);
       }
     }
@@ -103,14 +147,22 @@ class YouTubeSubtitleCapture {
     const playerContainer = document.querySelector('.html5-video-player');
     if (playerContainer && !this.playerObserver) {
       this.playerObserver = new MutationObserver(() => {
-        if (!this.observer) {
-          for (const selector of containerSelectors) {
-            const newContainer = document.querySelector(selector);
-            if (newContainer) {
-              this.log(`Caption container appeared: ${selector}`);
-              this.startObserving();
-              break;
-            }
+        // Check for caption container appearing
+        for (const selector of containerSelectors) {
+          const newContainer = document.querySelector(selector);
+          if (newContainer && !this.observer) {
+            this.log(`Caption container appeared: ${selector}`);
+            this.retryCount = 0; // Reset retry count
+            this.startObserving();
+            break;
+          }
+        }
+
+        // Also check for text appearing in existing container
+        if (!this.hasFoundSubtitles) {
+          const text = this.extractSubtitleText();
+          if (text) {
+            this.checkForSubtitles();
           }
         }
       });
@@ -147,35 +199,50 @@ class YouTubeSubtitleCapture {
   private extractSubtitleText(): string {
     // All possible selectors for YouTube subtitles (regular + auto-generated)
     const selectors = [
-      // Standard caption segments
+      // Standard caption segments (most common)
       '.ytp-caption-segment',
-      // Caption window content
+      // Caption window containers
       '.ytp-caption-window-container .captions-text span',
       '.ytp-caption-window-container span[class]',
       '.ytp-caption-window-bottom span',
       '.ytp-caption-window-top span',
-      // Auto-generated specific
+      '.ytp-caption-window-rollup span',
+      // Auto-generated specific selectors
       '.caption-visual-line',
       '.captions-text',
+      '.caption-window span',
+      // YouTube's newer caption renderer
+      '.ytp-caption-window-container div[class]',
+      '.ytp-caption-window-bottom div',
+      // Generic caption-related elements
+      '[class*="caption-window"] span',
+      '[class*="caption"] span',
       // Fallback - any text in caption containers
       '.ytp-caption-window-container *',
     ];
 
     for (const selector of selectors) {
-      const elements = document.querySelectorAll(selector);
-      if (elements.length > 0) {
-        const texts: string[] = [];
-        elements.forEach(el => {
-          // Only get direct text content, avoid duplicates from nested elements
-          const text = el.textContent?.trim();
-          if (text && !texts.includes(text)) {
-            texts.push(text);
+      try {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          const texts: string[] = [];
+          elements.forEach(el => {
+            // Only get direct text content, avoid duplicates from nested elements
+            const text = el.textContent?.trim();
+            if (text && text.length > 0 && !texts.includes(text)) {
+              // Filter out non-subtitle content
+              if (!text.includes('Subscribe') && !text.includes('Like') && text.length < 300) {
+                texts.push(text);
+              }
+            }
+          });
+          const combined = texts.join(' ').trim();
+          if (combined && combined.length > 0) {
+            return combined;
           }
-        });
-        const combined = texts.join(' ').trim();
-        if (combined) {
-          return combined;
         }
+      } catch {
+        // Ignore invalid selectors
       }
     }
 
@@ -184,7 +251,10 @@ class YouTubeSubtitleCapture {
     for (const container of containers) {
       const text = container.textContent?.trim();
       if (text && text.length > 0 && text.length < 500) {
-        return text;
+        // Make sure it's not a button or control
+        if (!container.closest('button') && !container.closest('[role="button"]')) {
+          return text;
+        }
       }
     }
 

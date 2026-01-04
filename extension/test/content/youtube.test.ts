@@ -12,6 +12,166 @@ describe('YouTube Subtitle Capture', () => {
     vi.resetModules();
   });
 
+  // CC Button Detection Tests
+  describe('CC Button Detection', () => {
+    it('should detect CC button not found', async () => {
+      document.body.innerHTML = `
+        <div class="html5-video-player">
+          <div class="ytp-caption-window-container">
+            <div class="ytp-caption-segment">Test</div>
+          </div>
+        </div>
+      `;
+
+      await import('../../src/content/youtube');
+      vi.advanceTimersByTime(1000);
+
+      // CC button not found case
+      expect(document.querySelector('.ytp-subtitles-button')).toBeNull();
+    });
+
+    it('should detect CC button exists but disabled', async () => {
+      document.body.innerHTML = `
+        <div class="html5-video-player">
+          <button class="ytp-subtitles-button" aria-pressed="false"></button>
+        </div>
+      `;
+
+      await import('../../src/content/youtube');
+      vi.advanceTimersByTime(1000);
+
+      const ccButton = document.querySelector('.ytp-subtitles-button');
+      expect(ccButton).not.toBeNull();
+      expect(ccButton?.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('should detect CC button exists and enabled', async () => {
+      document.body.innerHTML = `
+        <div class="html5-video-player">
+          <button class="ytp-subtitles-button" aria-pressed="true"></button>
+          <div class="ytp-caption-window-container">
+            <div class="ytp-caption-segment">Test caption</div>
+          </div>
+        </div>
+      `;
+
+      await import('../../src/content/youtube');
+      vi.advanceTimersByTime(1000);
+
+      const ccButton = document.querySelector('.ytp-subtitles-button');
+      expect(ccButton).not.toBeNull();
+      expect(ccButton?.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('should send appropriate status when CC button is disabled', async () => {
+      document.body.innerHTML = `
+        <div class="html5-video-player">
+          <button class="ytp-subtitles-button" aria-pressed="false"></button>
+        </div>
+      `;
+
+      await import('../../src/content/youtube');
+      vi.advanceTimersByTime(1000);
+
+      // Advance through retries
+      for (let i = 0; i < 20; i++) {
+        vi.advanceTimersByTime(2000);
+      }
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'SUBTITLE_STATUS',
+          payload: expect.objectContaining({
+            status: 'not_found',
+          }),
+        })
+      );
+    });
+  });
+
+  // Caption Container Edge Cases
+  describe('Caption Container Edge Cases', () => {
+    it('should handle caption inside button element (skip it)', async () => {
+      document.body.innerHTML = `
+        <div class="html5-video-player">
+          <button class="caption-button">
+            <div class="caption-text">Click here</div>
+          </button>
+        </div>
+      `;
+
+      await import('../../src/content/youtube');
+      vi.advanceTimersByTime(1000);
+
+      // Should not capture text from button
+      vi.advanceTimersByTime(500);
+      await vi.advanceTimersByTimeAsync(0);
+      vi.advanceTimersByTime(3000);
+
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'SUBTITLE_CAPTURED',
+          payload: expect.objectContaining({
+            text: expect.stringContaining('Click here'),
+          }),
+        })
+      );
+    });
+
+    it('should handle caption inside role=button element (skip it)', async () => {
+      document.body.innerHTML = `
+        <div class="html5-video-player">
+          <div role="button" class="caption-control">
+            <span class="caption-label">Subscribe</span>
+          </div>
+        </div>
+      `;
+
+      await import('../../src/content/youtube');
+      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(500);
+      await vi.advanceTimersByTimeAsync(0);
+      vi.advanceTimersByTime(3000);
+
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'SUBTITLE_CAPTURED',
+          payload: expect.objectContaining({
+            text: expect.stringContaining('Subscribe'),
+          }),
+        })
+      );
+    });
+
+    it('should extract text from valid caption container', async () => {
+      document.body.innerHTML = `
+        <div class="html5-video-player">
+          <div class="ytp-caption-window-container">
+            <div class="caption-content">
+              <span class="ytp-caption-segment">Valid subtitle text</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      await import('../../src/content/youtube');
+      vi.advanceTimersByTime(1000);
+
+      // Trigger mutation by changing text
+      const segment = document.querySelector('.ytp-caption-segment');
+      if (segment) segment.textContent = 'Updated subtitle';
+
+      await vi.advanceTimersByTimeAsync(0);
+      vi.advanceTimersByTime(3000);
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'SUBTITLE_CAPTURED',
+        })
+      );
+    });
+  });
+
   it('should wait for YouTube player and start observing', async () => {
     document.body.innerHTML = `
       <div class="html5-video-player">
